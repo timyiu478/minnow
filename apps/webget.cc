@@ -5,14 +5,29 @@
 #include <iostream>
 #include <span>
 #include <string>
+#include <sys/socket.h>
 
 using namespace std;
 
 namespace {
 void get_URL( const string& host, const string& path )
 {
-  debug( "Function called: get_URL( \"{}\", \"{}\" )", host, path );
-  debug( "get_URL() function not yet implemented" );
+  TCPSocket tcp_socket;
+
+  tcp_socket.connect( Address( host, "http" ) );
+
+  const string request = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
+
+  tcp_socket.write_all( request );
+
+  while ( true ) {
+    string buffer;
+    tcp_socket.read( buffer );
+    if ( buffer.empty() ) {
+      break;
+    }
+    cout << buffer;
+  }
 }
 } // namespace
 
