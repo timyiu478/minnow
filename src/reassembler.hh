@@ -1,6 +1,7 @@
 #pragma once
 
 #include "byte_stream.hh"
+#include <vector>
 
 class Reassembler
 {
@@ -42,5 +43,15 @@ public:
   const Writer& writer() const { return output_.writer(); }
 
 private:
+
+  struct Segment {
+    uint64_t first_index;
+    std::string data;
+  };
+
   ByteStream output_;
+  uint64_t first_unassemebled_index_ {};
+  uint64_t last_substring_index = -1;
+
+  std::vector<Segment> segments_ {};
 };
