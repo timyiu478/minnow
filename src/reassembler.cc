@@ -1,6 +1,6 @@
 #include "reassembler.hh"
 #include "debug.hh"
-#include <iostream>
+#include <cassert>
 
 using namespace std;
 
@@ -13,21 +13,16 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   }
 
   uint64_t first_unacceptable_index = first_unassemebled_index_ + output_.writer().available_capacity();
-
-  if ( first_index >= first_unacceptable_index || ( is_closed_ && first_index > first_close_index_ ) ) {
-    return;
-  }
-  
   // Segment index range: [first_index, end_index)
   uint64_t end_index = first_index + data.size();
 
-  // Remove assembled data
-  if ( end_index <= first_unassemebled_index_ ) {
-    if ( is_closed_ ) {
-      output_.writer().close();
-    }
+  // Do nothing if the entire new string is after first_unacceptable_index or first_close_index_
+  // or is before first_unassemebled_index_
+  if ( first_index >= first_unacceptable_index || ( is_closed_ && first_index > first_close_index_ ) || end_index < first_unassemebled_index_ ) {
     return;
   }
+
+  // Remove assembled data
   if ( first_index < first_unassemebled_index_ && data.size() > 0 ) {
     data = data.substr(first_unassemebled_index_ - first_index);
     first_index = first_unassemebled_index_;
@@ -51,6 +46,8 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
     if ( first_index < it->first_index && end_index >= it->first_index ) {
       it->data = data.substr(0, it->first_index - first_index) + it->data;
       it->first_index = first_index;
+
+      assert(seg_end_index == it->first_index + it->data.size());
     }
 
     // totally overlap with this segment after merge
@@ -62,7 +59,6 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
     // Trim the new string to [seg_end_index, end_index)
     // if first_index < seg_end_index
     if ( first_index < seg_end_index ) {
-      std::cout << format("first index {}, data size {}, data {}\n", first_index, data.size(), data);
       data = data.substr(seg_end_index - first_index);
       first_index = seg_end_index;
     }
@@ -85,17 +81,10 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   // Push data
   for ( auto &seg : segments_ ) {
     if ( seg.first_index == first_unassemebled_index_ ) {
-      if ( !output_.writer().is_closed() ) {
-        output_.writer().push(seg.data);
-      }
+      output_.writer().push(seg.data);
       uint64_t seg_end_index = seg.first_index + seg.data.size();
       first_unassemebled_index_ = seg_end_index;
       seg.pushed = true;
-      if ( is_closed_ && first_unassemebled_index_ == first_close_index_ ) {
-        output_.writer().close();
-        segments_.clear();
-        break;
-      }
     } else {
       break;
     }
@@ -103,6 +92,11 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
 
   // Clean up the pushed segments
   segments_.remove_if([](Segment seg){ return seg.pushed; });
+
+  // Close byte stream if all bytes are pushed
+  if ( is_closed_ && first_unassemebled_index_ == first_close_index_ ) {
+    output_.writer().close();
+  }
 }
 
 // How many bytes are stored in the Reassembler itself?
