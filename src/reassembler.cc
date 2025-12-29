@@ -37,7 +37,7 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   bool is_handled = data.size() == 0 ? true : false ; // whether the new string is totally handled by the existing segment(s)
   list<Segment>::iterator it = segments_.begin();
 
-  for ( ; it != segments_.end(); ++it ) {
+  for ( ; !is_handled && it != segments_.end(); ++it ) {
     uint64_t seg_end_index = it->first_index + it->data.size();
 
     // the string is not overlap with this segment
@@ -59,10 +59,13 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
       break;
     }
 
-    // std::cout << format("first index {}, data size {}, data {}\n", first_index, data.size(), data);
     // Trim the new string to [seg_end_index, end_index)
-    data = data.substr(seg_end_index - first_index);
-    first_index = seg_end_index;
+    // if first_index < seg_end_index
+    if ( first_index < seg_end_index ) {
+      std::cout << format("first index {}, data size {}, data {}\n", first_index, data.size(), data);
+      data = data.substr(seg_end_index - first_index);
+      first_index = seg_end_index;
+    }
   }
 
   if ( !is_handled ) {
@@ -82,7 +85,9 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   // Push data
   for ( auto &seg : segments_ ) {
     if ( seg.first_index == first_unassemebled_index_ ) {
-      output_.writer().push(seg.data);
+      if ( !output_.writer().is_closed() ) {
+        output_.writer().push(seg.data);
+      }
       uint64_t seg_end_index = seg.first_index + seg.data.size();
       first_unassemebled_index_ = seg_end_index;
       seg.pushed = true;
