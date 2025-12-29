@@ -2,7 +2,7 @@
 
 ## The `insert` function
 
-The insight of how to handle overlapping substring:
+The high-level idea of how to handle overlapping substring:
 
 ![](assets/reassembler_handle_overlapping_substring.png)
 
