@@ -1,6 +1,7 @@
 # Internet Stack
 
-> [!IMPORTANT] The implementation are provided as learning resources only. Please do not copy them — they're here to support understanding, not serve as plug-and-play answers.
+> [!IMPORTANT]
+> The code here is offered as a learning aid to help you build intuition and see one possible way of solving the problem. Please treat it as a starting point for your own thinking rather than a solution to hand in.
 
 Implemented Components:
 
