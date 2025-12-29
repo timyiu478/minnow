@@ -3,83 +3,80 @@
 
 using namespace std;
 
-ByteStream::ByteStream( uint64_t capacity ) : capacity_( capacity ) {}
+ByteStream::ByteStream( uint64_t capacity ) : capacity_( capacity ) { buffer_.resize(capacity_); }
 
-// Push data to stream, but only as much as available capacity allows.
 void Writer::push( string data )
 {
   if ( closed_ && not data.empty() ) {
-    throw runtime_error( "Writer::push() called on closed stream" );
+    throw runtime_error( "Writer:: push() called on closed stream" );
   }
 
   const uint64_t can_push = available_capacity();
-
   const uint64_t to_push = min( can_push, static_cast<uint64_t>( data.size() ) );
 
-  buffer_.append( data.data(), to_push );
+  for ( uint64_t i = 0; i < to_push; ++i ) {
+    buffer_[( bytes_pushed_ + i ) % capacity_] = data[i];
+  }
 
   bytes_pushed_ += to_push;
 }
 
-// Signal that the stream has reached its ending. Nothing more will be written.
 void Writer::close()
 {
   closed_ = true;
 }
 
-// Has the stream been closed?
 bool Writer::is_closed() const
 {
   return closed_;
 }
 
-// How many bytes can be pushed to the stream right now?
 uint64_t Writer::available_capacity() const
 {
-  return capacity_ - buffer_.size();
+  return capacity_ - ( bytes_pushed_ - bytes_popped_ );
 }
 
-// Total number of bytes cumulatively pushed to the stream
 uint64_t Writer::bytes_pushed() const
 {
   return bytes_pushed_;
 }
 
-// Peek at the next bytes in the buffer -- ideally as many as possible.
-// It's not required to return a string_view of the *whole* buffer, but
-// if the peeked string_view is only one byte at a time, it will probably force
-// the caller to do a lot of extra work.
 string_view Reader::peek() const
 {
-  return string_view( buffer_.data(), buffer_.size() );
+  // Only return contiguous data from current position to end
+  const uint64_t start_pos = bytes_popped_ % capacity_;
+  const uint64_t bytes_in_buffer = bytes_pushed_ - bytes_popped_;
+  
+  if ( bytes_in_buffer == 0 ) {
+    return string_view();  // Empty view
+  }
+  
+  // Return only the contiguous portion before wraparound
+  const uint64_t available = min( bytes_in_buffer, capacity_ - start_pos );
+
+  return string_view( buffer_.data() + start_pos, available );
 }
 
-// Remove `len` bytes from the buffer.
 void Reader::pop( uint64_t len )
 {
-  if ( len > buffer_.size() ) {
+  if ( len > bytes_buffered() ) {
     throw runtime_error( "Reader::pop() called with len greater than buffered size" );
   }
-
-  buffer_.erase( 0, len );
 
   bytes_popped_ += len;
 }
 
-// Is the stream finished (closed and fully popped)?
 bool Reader::is_finished() const
 {
-  return closed_ && buffer_.empty();
+  return closed_ && bytes_popped_ == bytes_pushed_;
 }
 
-// Number of bytes currently buffered (pushed and not popped)
 uint64_t Reader::bytes_buffered() const
 {
-  return buffer_.size();
+  return bytes_pushed_ - bytes_popped_;
 }
 
-// Total number of bytes cumulatively popped from stream
-uint64_t Reader::bytes_popped() const
+uint64_t Reader:: bytes_popped() const
 {
   return bytes_popped_;
 }

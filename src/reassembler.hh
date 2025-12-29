@@ -1,6 +1,7 @@
 #pragma once
 
 #include "byte_stream.hh"
+#include <list>
 
 class Reassembler
 {
@@ -42,5 +43,17 @@ public:
   const Writer& writer() const { return output_.writer(); }
 
 private:
+
+  struct Segment {
+    uint64_t first_index;
+    std::string data;
+    bool pushed;
+  };
+
   ByteStream output_;
+  uint64_t first_unassemebled_index_ {};
+  uint64_t first_close_index_ {}; // first_close_index_ - 1 is the last byte will be sent to the byte stream
+  bool is_closed_ {};
+
+  std::list<Segment> segments_ {};
 };
