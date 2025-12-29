@@ -7,6 +7,7 @@ using namespace std;
 void Reassembler::insert( uint64_t first_index, string data, bool is_last_substring )
 {
 
+  // Mark first_close_index_
   if ( is_last_substring ) {
     first_close_index_ = first_index + data.size();
     is_closed_ = true;
