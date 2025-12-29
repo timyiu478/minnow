@@ -1,7 +1,7 @@
 #pragma once
 
 #include "byte_stream.hh"
-#include <vector>
+#include <list>
 
 class Reassembler
 {
@@ -47,11 +47,13 @@ private:
   struct Segment {
     uint64_t first_index;
     std::string data;
+    bool pushed;
   };
 
   ByteStream output_;
   uint64_t first_unassemebled_index_ {};
-  uint64_t last_substring_index = -1;
+  uint64_t first_close_index_ {}; // first_close_index_ - 1 is the last byte will be sent to the byte stream
+  bool is_closed_ {};
 
-  std::vector<Segment> segments_ {};
+  std::list<Segment> segments_ {};
 };
