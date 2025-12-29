@@ -2,6 +2,9 @@
 
 ## The `insert` function
 
+The insight of how to handle overlapping substring:
+
+![](assets/reassembler_handle_overlapping_substring.png)
 
 
 ## Test Results
@@ -13,6 +16,7 @@ Machine Stack:
 
 
 ```console
+$ cmake --build build --target check1
       Start  1: compile with bug-checkers
  1/18 Test  #1: compile with bug-checkers ........   Passed    6.52 sec
       Start  3: byte_stream_basics
