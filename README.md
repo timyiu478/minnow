@@ -8,3 +8,4 @@ Implemented Components:
 | - | - | - | - |
 | 1 | ByteStream | In-memory flow-controlled byte stream | Source Code: [src/byte_stream.cc](src/byte_stream.cc) |
 | 2 | Reassmebler | Stitch substrings into byte stream for againsting reording and duplication | Source Code: [src/reassembler.cc](src/reassembler.cc); Explanation: [writeups/check1.md](writeups/check1.md) |
+| 3 | TCP Receiver |  | Source Code: [src/tcp_receiver.cc](src/tcp_receiver.cc) |
