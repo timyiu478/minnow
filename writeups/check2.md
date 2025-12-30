@@ -1,42 +1,14 @@
-Checkpoint 2 Writeup
-====================
+# TCP Receiver
 
-My name: [your name here]
+## Unwrap seqno
 
-My SUNet ID: [your sunetid here]
+| # | Absolute relation                          | raw_value_ vs ckpt_wrap     | offset (unsigned)       | offset > 2³¹ ? | Subtract 2³² ? | Final unwrap result vs checkpoint | Typical real-world situation                        | Correct? |
+|---|--------------------------------------------|-----------------------------|-------------------------|----------------|----------------|------------------------------------|-----------------------------------------------------|----------|
+| 1 | seq > checkpoint (ahead, no wrap cross)    | raw_value_ > ckpt_wrap      | small (0 … 2³¹−1)       | No             | No             | > checkpoint                       | Normal in-order arrival                             | Yes      |
+| 2 | seq > checkpoint (ahead, wrap cross)       | raw_value_ < ckpt_wrap      | small                   | No             | No             | > checkpoint                       | Segment arrives just after wrap point               | Yes      |
+| 3 | seq < checkpoint (behind, same cycle)      | raw_value_ < ckpt_wrap      | large (> 2³¹)           | Yes            | Yes            | < checkpoint                       | Delayed / out-of-order / retransmitted packet       | Yes      |
+| 4 | seq == checkpoint                          | raw_value_ == ckpt_wrap     | 0                       | No             | No             | == checkpoint                      | Perfect alignment (common at start of segment)      | Yes      |
+| 5 | seq >> checkpoint (big jump forward)       | usually raw < ckpt_wrap     | large                   | Yes            | Yes            | much smaller than checkpoint       | Usually invalid / attack / bug                      | No (picks "closer") |
+| 6 | seq << checkpoint (very old packet)        | raw > ckpt_wrap             | large                   | Yes            | Yes            | much larger than checkpoint        | Usually invalid / very old duplicate                | No (picks "closer") |
 
-I collaborated with: [list sunetids here]
-
-I would like to thank/reward these classmates for their help: [list sunetids here]
-
-This lab took me about [n] hours to do. I [did/did not] attend the lab session.
-
-Describe Wrap32 and TCPReceiver structure and design. [Describe data
-structures and approach taken. Describe alternative designs considered
-or tested.  Describe benefits and weaknesses of your design compared
-with alternatives -- perhaps in terms of simplicity/complexity, risk
-of bugs, asymptotic performance, empirical performance, required
-implementation time and difficulty, and other factors. Include any
-measurements if applicable.]
-
-Implementation Challenges:
-[]
-
-Remaining Bugs:
-[]
-
-- If applicable: I received help from a former student in this class,
-  another expert, or a chatbot or other AI system (e.g. ChatGPT,
-  Gemini, Claude, etc.), with the following questions or prompts:
-  [please list questions/prompts]
-
-- Optional: I had unexpected difficulty with: [describe]
-
-- Optional: I think you could make this lab better by: [describe]
-
-- Optional: I was surprised by: [describe]
-
-- Optional: I'm not sure about: [describe]
-
-- Optional: I made an extra test I think will be helpful in catching bugs: [submit as GitHub PR
-  and include URL here]
+Co-pilot: Grok 4.1
