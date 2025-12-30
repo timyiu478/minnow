@@ -12,3 +12,5 @@
 | 6 | seq << checkpoint (very old packet)        | raw > ckpt_wrap             | large                   | Yes            | Yes            | much larger than checkpoint        | Usually invalid / very old duplicate                | No (picks "closer") |
 
 Co-pilot: Grok 4.1
+
+This is tricky to me, and I do not fully grasp why it can handle almost all/most of the cases.
