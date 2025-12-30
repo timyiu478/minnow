@@ -42,6 +42,8 @@ public:
   // Access output stream writer, but const-only (can't write from outside)
   const Writer& writer() const { return output_.writer(); }
 
+  uint64_t first_unassemebled_index() const { return first_unassemebled_index_; }
+
 private:
 
   struct Segment {
