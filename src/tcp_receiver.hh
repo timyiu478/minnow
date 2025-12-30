@@ -27,6 +27,6 @@ public:
 
 private:
   Reassembler reassembler_;
-  Wrap32 isn_ { 0 }; 
+  Wrap32 isn_ { 0 }; // Initial Sequence Number
   bool isn_set_ {};
 };
