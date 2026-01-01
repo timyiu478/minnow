@@ -1,43 +1,131 @@
 #include "tcp_sender.hh"
 #include "debug.hh"
 #include "tcp_config.hh"
+#include <algorithm>
 
 using namespace std;
 
 // How many sequence numbers are outstanding?
 uint64_t TCPSender::sequence_numbers_in_flight() const
 {
-  debug( "unimplemented sequence_numbers_in_flight() called" );
-  return {};
+  uint64_t total = 0;
+  for ( const auto &msg : outstanding_ ) {
+    total += msg.sequence_length();
+  }
+  return total;
 }
 
 // How many consecutive retransmissions have happened?
 uint64_t TCPSender::consecutive_retransmissions() const
 {
-  debug( "unimplemented consecutive_retransmissions() called" );
-  return {};
+  return retransmission_count_;
 }
 
 void TCPSender::push( const TransmitFunction& transmit )
 {
-  debug( "unimplemented push() called" );
-  (void)transmit;
+  // Pretend like the window size is one
+  uint16_t window = window_size_ > 0 ? window_size_ : 1 ;
+
+  string_view bytes = input_.reader().peek();
+
+  // No new bytes to read or no space available in the window
+  if ( bytes.size() == 0 || sequence_numbers_in_flight() >= window ) { return; }
+
+  // Prepare the payload and pop the payload_size from the input_ stream
+  uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), window);
+  payload_size = min(payload_size, static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+  string payload(bytes.substr( 0, payload_size ));
+  input_.reader().pop(payload_size);
+
+  bool fin = input_.writer().is_closed();
+  bool rst = input_.has_error();
+  bool syn = isn_ == Wrap32 ( last_ack_ );
+
+  Wrap32 seqno = Wrap32 ( last_ack_ );
+
+  if ( outstanding_.size() > 0 ) {
+    seqno = outstanding_.back().seqno + outstanding_.back().sequence_length();
+  }
+
+  TCPSenderMessage msg = TCPSenderMessage{
+    seqno,
+    syn,
+    payload,
+    fin,
+    rst
+  };
+
+  transmit(msg);
+
+  // Add msg to outstanding_
+  outstanding_.push_back(msg);
+
+  // Start timer
+  if ( !timer_.is_started() ) {
+    timer_.start( last_tick_ms_ + RTO_ms_ );
+  }
 }
 
 TCPSenderMessage TCPSender::make_empty_message() const
 {
-  debug( "unimplemented make_empty_message() called" );
-  return {};
+  return TCPSenderMessage{Wrap32( last_ack_ ), {}, {}, {}};
 }
 
 void TCPSender::receive( const TCPReceiverMessage& msg )
 {
-  debug( "unimplemented receive() called" );
-  (void)msg;
+  // Look through its collection of outstanding segments and remove any that have now been fully acknowledged
+  if ( msg.ackno.has_value() ) {
+    uint64_t ackno = msg.ackno.value().unwrap(isn_, last_ack_);
+    
+    std::list<TCPSenderMessage>::iterator it = outstanding_.begin();
+
+    for ( ; it != outstanding_.end(); ++it ) {
+     uint64_t expect_ack = it->seqno.unwrap(isn_, last_ack_) + static_cast<uint64_t>(it->sequence_length());
+
+     if ( expect_ack > ackno ) { break; }
+    }
+
+    outstanding_.erase(outstanding_.begin(), it);
+
+    last_ack_ = ackno;
+  }
+
+  // Update window size
+  window_size_ = msg.window_size;
+
+  // Handle RST
+  if ( msg.RST ) {
+    input_.set_error();
+  }
+
+  // Reset
+  retransmission_count_= 0;
+  RTO_ms_ = initial_RTO_ms_;
+
+  if ( outstanding_.size() == 0) {
+    timer_.stop();
+  } else {
+    timer_.start( last_tick_ms_ + RTO_ms_ );
+  }
 }
 
 void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& transmit )
 {
-  debug( "unimplemented tick({}, ...) called", ms_since_last_tick );
-  (void)transmit;
+  last_tick_ms_ = ms_since_last_tick;
+  
+  if ( !timer_.is_started() || !timer_.is_expired( last_tick_ms_ ) ) {
+    return;
+  }
+
+  if ( outstanding_.size() == 0 ) {
+    debug("outstanding_.size() should > 0 if the timer is expired");
+    return;
+  }
+
+  retransmission_count_ += 1;
+  RTO_ms_ *= 2;
+
+  timer_.start(last_tick_ms_ + RTO_ms_);
+
+  transmit(outstanding_.front());
 }
