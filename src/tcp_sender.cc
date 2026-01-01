@@ -1,5 +1,6 @@
 #include "tcp_sender.hh"
 #include "debug.hh"
+#include "parser.hh"
 #include "tcp_config.hh"
 #include <algorithm>
 
@@ -28,20 +29,31 @@ void TCPSender::push( const TransmitFunction& transmit )
 
   string_view bytes = input_.reader().peek();
 
-  // No new bytes to read or no space available in the window
-  if ( bytes.size() == 0 || sequence_numbers_in_flight() >= window ) { return; }
+  // No space available in the window
+  // or no bytes to send (with no SYN and FIN)
+  // or the stream is closed and the last message is outgoing/acknowledged
+  if ( (syn_ && !input_.writer().is_closed() && bytes.size() == 0) || sequence_numbers_in_flight() >= window || fin_ ) { return; }
 
   // Prepare the payload and pop the payload_size from the input_ stream
-  uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), window);
+  uint16_t available_window = window - sequence_numbers_in_flight();
+  uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), available_window);
   payload_size = min(payload_size, static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
   string payload(bytes.substr( 0, payload_size ));
   input_.reader().pop(payload_size);
 
   bool fin = input_.writer().is_closed();
   bool rst = input_.has_error();
-  bool syn = isn_ == Wrap32 ( last_ack_ );
+  bool syn = syn_ ? false : true;
 
-  Wrap32 seqno = Wrap32 ( last_ack_ );
+  if ( !syn_ ) {
+    syn_ = true;
+  }
+
+  if ( fin ) {
+    fin_ = true;
+  }
+
+  Wrap32 seqno = last_ack_;
 
   if ( outstanding_.size() > 0 ) {
     seqno = outstanding_.back().seqno + outstanding_.back().sequence_length();
@@ -54,6 +66,8 @@ void TCPSender::push( const TransmitFunction& transmit )
     fin,
     rst
   };
+
+  debug("bytes size: {}", bytes.size());
 
   transmit(msg);
 
@@ -68,30 +82,49 @@ void TCPSender::push( const TransmitFunction& transmit )
 
 TCPSenderMessage TCPSender::make_empty_message() const
 {
-  return TCPSenderMessage{Wrap32( last_ack_ ), {}, {}, {}};
+  if ( outstanding_.size() == 0 ) {
+    return TCPSenderMessage{last_ack_, {}, {}, {}};
+  }
+
+  return TCPSenderMessage{outstanding_.back().seqno + outstanding_.back().sequence_length(), {}, {}, {}};
 }
 
 void TCPSender::receive( const TCPReceiverMessage& msg )
 {
+  // Update window size
+  window_size_ = msg.window_size;
+
   // Look through its collection of outstanding segments and remove any that have now been fully acknowledged
   if ( msg.ackno.has_value() ) {
-    uint64_t ackno = msg.ackno.value().unwrap(isn_, last_ack_);
+    uint64_t ackno = msg.ackno.value().unwrap(isn_, input_.reader().bytes_popped());
+
+    // Wrong ack
+    if ( outstanding_.size() == 0 ) {
+      debug( "wrong ack: no outstanding msg");
+      return;
+    }
+    uint64_t expect_largest_ack = outstanding_.back().seqno.unwrap(isn_, input_.reader().bytes_popped()) + static_cast<uint64_t>(outstanding_.back().sequence_length());
+    if ( ackno > expect_largest_ack ) {
+      debug( "wrong ack: expect_ack is {}, ackno is {}", expect_largest_ack, ackno);
+      return;
+    }
     
     std::list<TCPSenderMessage>::iterator it = outstanding_.begin();
 
     for ( ; it != outstanding_.end(); ++it ) {
-     uint64_t expect_ack = it->seqno.unwrap(isn_, last_ack_) + static_cast<uint64_t>(it->sequence_length());
+     uint64_t expect_ack = it->seqno.unwrap(isn_, input_.reader().bytes_popped()) + static_cast<uint64_t>(it->sequence_length());
+
+     debug( "ackno: {}, expect_ack: {}", ackno, expect_ack );
 
      if ( expect_ack > ackno ) { break; }
+
     }
 
     outstanding_.erase(outstanding_.begin(), it);
 
-    last_ack_ = ackno;
+    last_ack_ = msg.ackno.value();
   }
 
-  // Update window size
-  window_size_ = msg.window_size;
 
   // Handle RST
   if ( msg.RST ) {
@@ -113,7 +146,7 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
 {
   last_tick_ms_ = ms_since_last_tick;
   
-  if ( !timer_.is_started() || !timer_.is_expired( last_tick_ms_ ) ) {
+  if ( !timer_.is_started() || !timer_.is_expired( last_tick_ms_ ) || window_size_ == 0 || !syn_ ) {
     return;
   }
 
