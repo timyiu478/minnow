@@ -27,13 +27,28 @@ void TCPSender::push( const TransmitFunction& transmit )
   while ( true ) {
     string_view bytes = input_.reader().peek();
 
+    // Treat a '0' window size as equal to '1'
+    uint16_t window = window_size_ > 0 ? window_size_ : 1;
+
     // No space available in the window
     // or no bytes to send (with no SYN and FIN)
     // or the stream is closed and the last message is outgoing/acknowledged
-    if ( (syn_ && !input_.writer().is_closed() && bytes.size() == 0) || sequence_numbers_in_flight() >= window_size_ || fin_ ) { return; }
+    if ( (syn_ && !input_.writer().is_closed() && bytes.size() == 0) || sequence_numbers_in_flight() >= window || fin_ ) { return; }
+
+
+    if ( input_.has_error() ) {
+      rst_ = true;
+    }
+
+    bool rst = rst_;
+    bool syn = syn_ ? false : true;
+
+    if ( !syn_ ) {
+      syn_ = true;
+    }
 
     // Prepare the payload and pop the payload_size from the input_ stream
-    uint16_t available_window = window_size_ - sequence_numbers_in_flight();
+    uint16_t available_window = window - sequence_numbers_in_flight() - syn - rst;
     uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), available_window);
     payload_size = min(payload_size, static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
     string payload(bytes.substr( 0, payload_size ));
@@ -41,13 +56,7 @@ void TCPSender::push( const TransmitFunction& transmit )
 
     debug("payload: {}", payload);
 
-    bool fin = input_.writer().is_closed();
-    bool rst = input_.has_error() || rst_;
-    bool syn = syn_ ? false : true;
-
-    if ( !syn_ ) {
-      syn_ = true;
-    }
+    bool fin = input_.reader().is_finished() && available_window > payload_size;
 
     if ( fin ) {
       fin_ = true;
@@ -85,16 +94,22 @@ void TCPSender::push( const TransmitFunction& transmit )
 TCPSenderMessage TCPSender::make_empty_message() const
 {
   if ( outstanding_.size() == 0 ) {
-    return TCPSenderMessage{last_ack_, {}, {}, {}};
+    return TCPSenderMessage{last_ack_, {}, {}, {}, input_.has_error()};
   }
 
-  return TCPSenderMessage{outstanding_.back().seqno + outstanding_.back().sequence_length(), {}, {}, {}};
+  return TCPSenderMessage{outstanding_.back().seqno + outstanding_.back().sequence_length(), {}, {}, {}, input_.has_error()};
 }
 
 void TCPSender::receive( const TCPReceiverMessage& msg )
 {
   // Update window size
   window_size_ = msg.window_size;
+
+  // Handle RST
+  if ( msg.RST ) {
+    input_.set_error();
+    rst_ = true;
+  }
 
   // Look through its collection of outstanding segments and remove any that have now been fully acknowledged
   bool acked = false; // whether the segment(s) are fully acknowledged
@@ -135,10 +150,6 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
     return;
   }
 
-  // Handle RST
-  if ( msg.RST ) {
-    input_.set_error();
-  }
 
   // Reset
   retransmission_count_= 0;
@@ -163,7 +174,8 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
     debug("tick: do nothing since timer is not expired. now is {}", now_ );
     return;
   }
-  if ( window_size_ == 0 || !syn_ ) {
+  if ( !syn_ ) {
+    debug("tick: the connection is not established." );
     return;
   }
   if ( outstanding_.size() == 0 ) {
@@ -172,7 +184,6 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
   }
 
   retransmission_count_ += 1;
-  RTO_ms_ *= 2;
 
   // Give up the connection
   if ( retransmission_count_ > TCPConfig::MAX_RETX_ATTEMPTS ) {
@@ -180,6 +191,10 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
     outstanding_.front().RST = true;
   }
 
+  // Does not exponential back off if window size is 0
+  if ( window_size_ > 0 ) {
+    RTO_ms_ *= 2;
+  }
   timer_.start(now_ + RTO_ms_);
 
   transmit(outstanding_.front());
