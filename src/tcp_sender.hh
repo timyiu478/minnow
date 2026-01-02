@@ -46,11 +46,12 @@ private:
   Wrap32 last_ack_;
   uint64_t initial_RTO_ms_;
   uint64_t RTO_ms_;
-  uint64_t last_tick_ms_ {};
+  uint64_t now_ {};
   uint16_t window_size_ { 1 };
   uint16_t retransmission_count_ { 0 }; // the count of “consecutive retransmissions”
   std::list<TCPSenderMessage> outstanding_ {}; // list of outstanding segments
   RetransmissionTimer timer_ {};
-  bool syn_ {}; // whether if the connection is initialized
-  bool fin_ {}; // whether TCPSenderMessage with FIN flag is sent at least once
+  bool syn_ {}; // whether the connection is initialized
+  bool fin_ {}; // whether TCPSenderMessage with FIN flag is outgoing/acknowledged
+  bool rst_ {}; // whether the connection is aborted
 };

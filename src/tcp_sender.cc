@@ -42,7 +42,7 @@ void TCPSender::push( const TransmitFunction& transmit )
   input_.reader().pop(payload_size);
 
   bool fin = input_.writer().is_closed();
-  bool rst = input_.has_error();
+  bool rst = input_.has_error() || rst_;
   bool syn = syn_ ? false : true;
 
   if ( !syn_ ) {
@@ -76,7 +76,7 @@ void TCPSender::push( const TransmitFunction& transmit )
 
   // Start timer
   if ( !timer_.is_started() ) {
-    timer_.start( last_tick_ms_ + RTO_ms_ );
+    timer_.start( now_ + RTO_ms_ );
   }
 }
 
@@ -138,18 +138,25 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
   if ( outstanding_.size() == 0) {
     timer_.stop();
   } else {
-    timer_.start( last_tick_ms_ + RTO_ms_ );
+    timer_.start( now_ + RTO_ms_ );
   }
 }
 
 void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& transmit )
 {
-  last_tick_ms_ = ms_since_last_tick;
+  now_ += ms_since_last_tick;
   
-  if ( !timer_.is_started() || !timer_.is_expired( last_tick_ms_ ) || window_size_ == 0 || !syn_ ) {
+  if ( !timer_.is_started() ) {
+    debug("tick: do nothing since timer is not started.");
     return;
   }
-
+  if ( !timer_.is_expired( now_ ) ) {
+    debug("tick: do nothing since timer is not expired. now is {}", now_ );
+    return;
+  }
+  if ( window_size_ == 0 || !syn_ ) {
+    return;
+  }
   if ( outstanding_.size() == 0 ) {
     debug("outstanding_.size() should > 0 if the timer is expired");
     return;
@@ -158,7 +165,13 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
   retransmission_count_ += 1;
   RTO_ms_ *= 2;
 
-  timer_.start(last_tick_ms_ + RTO_ms_);
+  // Give up the connection
+  if ( retransmission_count_ > TCPConfig::MAX_RETX_ATTEMPTS ) {
+    rst_ = true;
+    outstanding_.front().RST = true;
+  }
+
+  timer_.start(now_ + RTO_ms_);
 
   transmit(outstanding_.front());
 }
