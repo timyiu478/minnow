@@ -24,59 +24,61 @@ uint64_t TCPSender::consecutive_retransmissions() const
 
 void TCPSender::push( const TransmitFunction& transmit )
 {
-  // Pretend like the window size is one
-  uint16_t window = window_size_ > 0 ? window_size_ : 1 ;
+  while ( true ) {
+    string_view bytes = input_.reader().peek();
 
-  string_view bytes = input_.reader().peek();
+    // No space available in the window
+    // or no bytes to send (with no SYN and FIN)
+    // or the stream is closed and the last message is outgoing/acknowledged
+    if ( (syn_ && !input_.writer().is_closed() && bytes.size() == 0) || sequence_numbers_in_flight() >= window_size_ || fin_ ) { return; }
 
-  // No space available in the window
-  // or no bytes to send (with no SYN and FIN)
-  // or the stream is closed and the last message is outgoing/acknowledged
-  if ( (syn_ && !input_.writer().is_closed() && bytes.size() == 0) || sequence_numbers_in_flight() >= window || fin_ ) { return; }
+    // Prepare the payload and pop the payload_size from the input_ stream
+    uint16_t available_window = window_size_ - sequence_numbers_in_flight();
+    uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), available_window);
+    payload_size = min(payload_size, static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
+    string payload(bytes.substr( 0, payload_size ));
+    input_.reader().pop(payload_size);
 
-  // Prepare the payload and pop the payload_size from the input_ stream
-  uint16_t available_window = window - sequence_numbers_in_flight();
-  uint16_t payload_size = min(static_cast<uint16_t>(bytes.size()), available_window);
-  payload_size = min(payload_size, static_cast<uint16_t>(TCPConfig::MAX_PAYLOAD_SIZE));
-  string payload(bytes.substr( 0, payload_size ));
-  input_.reader().pop(payload_size);
+    debug("payload: {}", payload);
 
-  bool fin = input_.writer().is_closed();
-  bool rst = input_.has_error() || rst_;
-  bool syn = syn_ ? false : true;
+    bool fin = input_.writer().is_closed();
+    bool rst = input_.has_error() || rst_;
+    bool syn = syn_ ? false : true;
 
-  if ( !syn_ ) {
-    syn_ = true;
-  }
+    if ( !syn_ ) {
+      syn_ = true;
+    }
 
-  if ( fin ) {
-    fin_ = true;
-  }
+    if ( fin ) {
+      fin_ = true;
+    }
 
-  Wrap32 seqno = last_ack_;
+    Wrap32 seqno = last_ack_;
 
-  if ( outstanding_.size() > 0 ) {
-    seqno = outstanding_.back().seqno + outstanding_.back().sequence_length();
-  }
+    if ( outstanding_.size() > 0 ) {
+      seqno = outstanding_.back().seqno + outstanding_.back().sequence_length();
+    }
 
-  TCPSenderMessage msg = TCPSenderMessage{
-    seqno,
-    syn,
-    payload,
-    fin,
-    rst
-  };
+    TCPSenderMessage msg = TCPSenderMessage{
+      seqno,
+      syn,
+      payload,
+      fin,
+      rst
+    };
 
-  debug("bytes size: {}", bytes.size());
+    debug("bytes size: {}", bytes.size());
+    debug("window size: {}", window_size_);
 
-  transmit(msg);
+    transmit(msg);
 
-  // Add msg to outstanding_
-  outstanding_.push_back(msg);
+    // Add msg to outstanding_
+    outstanding_.push_back(msg);
 
-  // Start timer
-  if ( !timer_.is_started() ) {
-    timer_.start( now_ + RTO_ms_ );
+    // Start timer
+    if ( !timer_.is_started() ) {
+      timer_.start( now_ + RTO_ms_ );
+    }
   }
 }
 
