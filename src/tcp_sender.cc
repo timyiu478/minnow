@@ -95,6 +95,7 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
   window_size_ = msg.window_size;
 
   // Look through its collection of outstanding segments and remove any that have now been fully acknowledged
+  bool acked = false; // whether the segment(s) are fully acknowledged
   if ( msg.ackno.has_value() ) {
     uint64_t ackno = msg.ackno.value().unwrap(isn_, input_.reader().bytes_popped());
 
@@ -117,14 +118,20 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
      debug( "ackno: {}, expect_ack: {}", ackno, expect_ack );
 
      if ( expect_ack > ackno ) { break; }
-
     }
 
-    outstanding_.erase(outstanding_.begin(), it);
+    if ( it != outstanding_.begin() ) {
+      outstanding_.erase(outstanding_.begin(), it);
+      acked = true;
+    }
 
     last_ack_ = msg.ackno.value();
   }
 
+  // Timer doesn't restart without ACK of new data
+  if ( !acked ) {
+    return;
+  }
 
   // Handle RST
   if ( msg.RST ) {
