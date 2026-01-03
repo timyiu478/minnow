@@ -40,7 +40,7 @@ void NetworkInterface::send_datagram( InternetDatagram dgram, const Address& nex
   // Case 1: If the destination Ethernet address is already known,
   // send it right away.
   if ( cache_.contains(next_hop_numeric) ) {
-    eframe.header.dst = cache_[next_hop_numeric].front().eth_addr;
+    eframe.header.dst = cache_[next_hop_numeric];
     eframe.header.type = EthernetHeader::TYPE_IPv4;
     eframe.payload = serialize( dgram );
 
@@ -67,15 +67,11 @@ void NetworkInterface::send_datagram( InternetDatagram dgram, const Address& nex
     transmit( eframe );
     
     last_arp_time_[next_hop_numeric] = now_;
-    
-    while ( !queues_[next_hop_numeric].empty() ) {
-      queues_[next_hop_numeric].pop();
-    }
   }
   
   // Queue the IP datagram so it can be sent 
   // after the ARP reply is received
-  queues_[next_hop_numeric].push(dgram);
+  queues_[next_hop_numeric].push({dgram, now_});
 }
 
 //! \param[in] frame the incoming Ethernet frame
@@ -104,7 +100,8 @@ void NetworkInterface::recv_frame( EthernetFrame frame )
     // Remember the mapping between the sender’s IP address 
     // and Ethernet address
     // even if the ARP message is not for us
-    cache_[msg.sender_ip_address].push_back({msg.sender_ethernet_address, now_});
+    cache_[msg.sender_ip_address] = msg.sender_ethernet_address;
+    last_cache_time_[msg.sender_ip_address] = now_;
 
     // Send an appropriate ARP reply
     if ( msg.opcode == ARPMessage::OPCODE_REQUEST ) {
@@ -135,9 +132,12 @@ void NetworkInterface::recv_frame( EthernetFrame frame )
 
     // Send any queued datagrams to this IP address
     while ( !queues_[msg.sender_ip_address].empty() ) {
-      InternetDatagram dgram = queues_[msg.sender_ip_address].front();
+      DgramEntry entry = queues_[msg.sender_ip_address].front();
       queues_[msg.sender_ip_address].pop();
-      send_datagram( dgram, Address::from_ipv4_numeric( msg.sender_ip_address ) );
+      if ( entry.timestamp + arp_timeout_ <= now_ ) {
+        continue;
+      }
+      send_datagram( entry.dgram, Address::from_ipv4_numeric( msg.sender_ip_address ) );
     }
 
     return;
@@ -152,10 +152,12 @@ void NetworkInterface::tick( const size_t ms_since_last_tick )
   now_ += ms_since_last_tick;
 
   // Expire any IP-to-Ethernet mappings that have expired
-  for ( auto it = cache_.begin(); it != cache_.end(); ++it )
+  for ( auto it = cache_.begin(); it != cache_.end(); )
   {
-    it->second.remove_if( [this]( const CacheEntry& entry ) {
-      return now_ >= cache_TTL_ + entry.timestamp;
-    } );
+    if ( last_cache_time_[it->first] + cache_TTL_ <= now_ ) {
+      it = cache_.erase(it);
+    } else {
+      ++it;
+    }
   }
 }

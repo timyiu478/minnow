@@ -88,19 +88,19 @@ private:
   // The last time the ARP request was sent
   std::map<uint32_t, size_t> last_arp_time_ {};
 
-  // The last time the map of IP address to EthernetAddress address was cached 
+  // The last time
   std::map<uint32_t, size_t> last_cache_time_ {};
 
-  // A mapping from IP addresses to Cache Entries
-  struct CacheEntry
+  // A mapping from IP addresses to EthernetAddress 
+  std::map<uint32_t, EthernetAddress> cache_ {};
+  
+  // A mapping from IP addresses to DgramEntry queue
+  struct DgramEntry
   {
-    EthernetAddress eth_addr;
+    InternetDatagram dgram;
     size_t timestamp;
   };
-  std::map<uint32_t, std::list<CacheEntry>> cache_ {};
-  
-  // A mapping from IP addresses to InternetDatagram queue
-  std::map<uint32_t, std::queue<InternetDatagram>> queues_ {};
+  std::map<uint32_t, std::queue<DgramEntry>> queues_ {};
 
   // Current time
   size_t now_ {};
