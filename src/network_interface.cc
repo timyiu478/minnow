@@ -90,6 +90,8 @@ void NetworkInterface::recv_frame( EthernetFrame frame )
     }
 
     datagrams_received_.push( dgram );
+
+    return;
   } else if ( frame.header.type == EthernetHeader::TYPE_ARP ) {
     ARPMessage msg;
     if ( !parse( msg, frame.payload ) ) {
@@ -143,7 +145,7 @@ void NetworkInterface::recv_frame( EthernetFrame frame )
     return;
   }
 
-  debug("Received frame with wrong type");
+  debug("Received frame with wrong type {}", frame.header.type);
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
