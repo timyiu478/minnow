@@ -1,40 +1,27 @@
-Checkpoint 5 Writeup
-====================
+# Network Interface
 
-My name: [your name here]
+## Implementation Tip
 
-My SUNet ID: [your sunetid here]
+The network interface shouldn’t store a datagram beyond the time when it would be willing to send another ARP request for the same IP address.
 
-I collaborated with: [list sunetids here]
+To implement this, you can store a timestamp alongside each entry in the datagram queue, and when the interface tries to resend the datagram after learning the Ethernet address from the ARP message(both request and reply), compare the current time to the stored timestamp. If the elapsed time exceeds a certain threshold (5 seconds in our config), consider the entry stale and do not resend this datagram.
 
-I would like to thank/reward these classmates for their help: [list sunetids here]
+## Test Result
 
-This checkpoint took me about [n] hours to do. I [did/did not] attend the lab session.
+Machine Stack:
 
-Program Structure and Design of the NetworkInterface [Describe data
-structures and approach taken. Describe alternative designs considered
-or tested.  Describe benefits and weaknesses of your design compared
-with alternatives -- perhaps in terms of simplicity/complexity, risk
-of bugs, asymptotic performance, empirical performance, required
-implementation time and difficulty, and other factors. Include any
-measurements if applicable.]:
-[]
+* OS: Ubuntu 22.04.3 LTS
+* CPU: 13th Gen Intel(R) Core(TM) i5-13600
 
-Implementation Challenges:
-[]
+```
+tim@tim-virtual-machine ~/g/minnow-2025 (ch5)> cmake --build build --target check5
+Test project /home/tim/git/minnow-2025/build
+    Start  1: compile with bug-checkers
+1/3 Test  #1: compile with bug-checkers ........   Passed    0.65 sec
+    Start 35: net_interface
+2/3 Test #35: net_interface ....................   Passed    0.17 sec
+    Start 37: no_skip
+3/3 Test #37: no_skip ..........................   Passed    0.02 sec
 
-Remaining Bugs:
-[]
-
-- If applicable: I received help from a former student in this class,
-  another expert, or a chatbot or other AI system (e.g. ChatGPT,
-  Gemini, Claude, etc.), with the following questions or prompts:
-  [please list questions/prompts]
-
-- Optional: I had unexpected difficulty with: [describe]
-
-- Optional: I think you could make this lab better by: [describe]
-
-- Optional: I was surprised by: [describe]
-
-- Optional: I'm not sure about: [describe]
+100% tests passed, 0 tests failed out of 3
+```
