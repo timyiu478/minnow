@@ -36,24 +36,23 @@ void Router::route()
       InternetDatagram dgram = queue.front();
       queue.pop();
 
-      uint8_t longest_prefix_length = 0;
+      int longest_prefix_length = -1;
       uint8_t select_idx;
 
       for (  uint i = 0 ; i <  route_table_.size(); i++  ) {
         Route r = route_table_[i];
-        if ( r.prefix_length == 0 ) { 
-          if ( r.route_prefix != dgram.header.dst ) { continue; }
-        } else if ( r.route_prefix >> ( 32 - r.prefix_length ) != dgram.header.dst >> ( 32 - r.prefix_length ) || r.prefix_length <= longest_prefix_length ) {
+        if ( r.prefix_length > 0 && r.route_prefix >> ( 32 - r.prefix_length ) != dgram.header.dst >> ( 32 - r.prefix_length ) ) {
           continue;
         }
-        longest_prefix_length = r.prefix_length;
-        select_idx = i;
+        if ( r.prefix_length > longest_prefix_length ) {
+          longest_prefix_length = r.prefix_length;
+          select_idx = i;
+        }
       }
 
       debug("longest_prefix_length is {}, select_idx is {}", longest_prefix_length, select_idx);
       
-      if ( longest_prefix_length > 0 ) {
-        if ( dgram.header.ttl == 0 ) { continue; }
+      if ( longest_prefix_length > -1 && dgram.header.ttl > 1 ) {
         dgram.header.ttl -= 1;
         dgram.header.compute_checksum();
 
