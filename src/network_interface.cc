@@ -30,20 +30,132 @@ NetworkInterface::NetworkInterface( string_view name,
 //! can be converted to a uint32_t (raw 32-bit IP address) by using the Address::ipv4_numeric() method.
 void NetworkInterface::send_datagram( InternetDatagram dgram, const Address& next_hop )
 {
-  debug( "unimplemented send_datagram called" );
-  (void)dgram;
-  (void)next_hop;
+  // Translate this datagram into an Ethernet frame 
+  EthernetFrame eframe;
+
+  eframe.header.src = ethernet_address_;
+
+  uint32_t next_hop_numeric = next_hop.ipv4_numeric();
+
+  // Case 1: If the destination Ethernet address is already known,
+  // send it right away.
+  if ( cache_.contains(next_hop_numeric) ) {
+    eframe.header.dst = cache_[next_hop_numeric].front().eth_addr;
+    eframe.header.type = EthernetHeader::TYPE_IPv4;
+    eframe.payload = serialize( dgram );
+
+    debug("Send datagram to this IP address - {}", next_hop_numeric);
+
+    transmit( eframe );
+    return;
+  }
+
+  // Case 2: The destination Ethernet address is unknown,
+  // broadcast an ARP request for the next hop's Ethernet address
+  if ( !last_arp_time_.contains(next_hop_numeric) || last_arp_time_[next_hop_numeric] + arp_timeout_ < now_ ) {
+    ARPMessage msg;
+    msg.opcode = ARPMessage::OPCODE_REQUEST;
+    msg.sender_ethernet_address = ethernet_address_;
+    msg.sender_ip_address = ip_address_.ipv4_numeric();
+    msg.target_ip_address = next_hop_numeric;
+
+    eframe.header.src = ethernet_address_;
+    eframe.header.dst = ETHERNET_BROADCAST;
+    eframe.header.type = EthernetHeader::TYPE_ARP;
+    eframe.payload = serialize( msg );
+    
+    transmit( eframe );
+    
+    last_arp_time_[next_hop_numeric] = now_;
+    
+    while ( !queues_[next_hop_numeric].empty() ) {
+      queues_[next_hop_numeric].pop();
+    }
+  }
+  
+  // Queue the IP datagram so it can be sent 
+  // after the ARP reply is received
+  queues_[next_hop_numeric].push(dgram);
 }
 
 //! \param[in] frame the incoming Ethernet frame
 void NetworkInterface::recv_frame( EthernetFrame frame )
 {
-  debug( "unimplemented recv_frame called" );
-  (void)frame;
+  if ( frame.header.type == EthernetHeader::TYPE_IPv4 ) {
+    if ( frame.header.dst != ethernet_address_ ) {
+      debug("IPv4 datagram not for us");
+      return;
+    }
+
+    InternetDatagram dgram;
+    if ( !parse( dgram, frame.payload ) ) {
+      debug("Failed to parse eframe payload to datagram");
+      return;
+    }
+
+    datagrams_received_.push( dgram );
+  } else if ( frame.header.type == EthernetHeader::TYPE_ARP ) {
+    ARPMessage msg;
+    if ( !parse( msg, frame.payload ) ) {
+      debug("Failed to parse eframe payload to arp msg");
+      return;
+    }
+
+    // Remember the mapping between the sender’s IP address 
+    // and Ethernet address
+    // even if the ARP message is not for us
+    cache_[msg.sender_ip_address].push_back({msg.sender_ethernet_address, now_});
+
+    // Send an appropriate ARP reply
+    if ( msg.opcode == ARPMessage::OPCODE_REQUEST ) {
+      if ( msg.target_ip_address == ip_address_.ipv4_numeric() ) {
+        ARPMessage reply;
+        reply.opcode = ARPMessage::OPCODE_REPLY;
+        reply.sender_ethernet_address = ethernet_address_;
+        reply.sender_ip_address = ip_address_.ipv4_numeric();
+        reply.target_ethernet_address = msg.sender_ethernet_address;
+        reply.target_ip_address = msg.sender_ip_address;
+
+        EthernetFrame eframe;
+
+        eframe.header.src = ethernet_address_;
+        eframe.header.dst = msg.sender_ethernet_address;
+        eframe.header.type = EthernetHeader::TYPE_ARP;
+        eframe.payload = serialize( reply );
+
+        transmit( eframe );
+      }
+
+      debug("ARP request not for us");
+    } else if ( msg.opcode == ARPMessage::OPCODE_REPLY ) {
+      if ( frame.header.dst != ethernet_address_ || msg.target_ip_address != ip_address_.ipv4_numeric() ) {
+        debug("ARP reply not for us");
+      }
+    }
+
+    // Send any queued datagrams to this IP address
+    while ( !queues_[msg.sender_ip_address].empty() ) {
+      InternetDatagram dgram = queues_[msg.sender_ip_address].front();
+      queues_[msg.sender_ip_address].pop();
+      send_datagram( dgram, Address::from_ipv4_numeric( msg.sender_ip_address ) );
+    }
+
+    return;
+  }
+
+  debug("Received frame with wrong type");
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void NetworkInterface::tick( const size_t ms_since_last_tick )
 {
-  debug( "unimplemented tick({}) called", ms_since_last_tick );
+  now_ += ms_since_last_tick;
+
+  // Expire any IP-to-Ethernet mappings that have expired
+  for ( auto it = cache_.begin(); it != cache_.end(); ++it )
+  {
+    it->second.remove_if( [this]( const CacheEntry& entry ) {
+      return now_ >= cache_TTL_ + entry.timestamp;
+    } );
+  }
 }
