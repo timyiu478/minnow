@@ -14,3 +14,4 @@ Implemented Components:
 | 3 | TCP Receiver | Receive messages from the sender, reassemble the byte stream (including its ending, when that occurs), and determine that messages that should be sent back to the sender for acknowledgement and flow control | Source Code: [src/tcp_receiver.cc](src/tcp_receiver.cc) |
 | 4 | TCP Sender | Responsible for reading from a ByteStream (created and written to by some sender-side application), and turning the stream into a sequence of outgoing TCP segments | Source Code: [src/tcp_sender.cc](src/tcp_sender.cc) |
 | 5 | Network Interface | Translate the datagram into an Ethernet frame and (eventually) send it & run the address resolution Protocol | Source Code: [src/network_interface.cc](src/network_interface.cc) |
+| 6 | IP Router | Forward the datagrams it gets according to the routing table | Source Code: [src/router.cc](src/router.cc) |

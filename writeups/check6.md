@@ -1,39 +1,24 @@
-Checkpoint 6 Writeup
-====================
+## Test Result
 
-My name: [your name here]
+Machine Stack:
 
-My SUNet ID: [your sunetid here]
+* OS: Ubuntu 22.04.3 LTS
+* CPU: 13th Gen Intel(R) Core(TM) i5-13600
 
-I collaborated with: [list sunetids here]
+```
+tim@tim-virtual-machine ~/g/minnow-2025 (ch6) [2]> cmake --build build --target check6
+Test project /home/tim/git/minnow-2025/build
+    Start  1: compile with bug-checkers
+1/4 Test  #1: compile with bug-checkers ........   Passed    8.10 sec
+    Start 35: net_interface
+2/4 Test #35: net_interface ....................   Passed    0.27 sec
+    Start 36: router
+3/4 Test #36: router ...........................   Passed    0.08 sec
+    Start 37: no_skip
+4/4 Test #37: no_skip ..........................   Passed    0.02 sec
 
-I would like to thank/reward these classmates for their help: [list sunetids here]
+100% tests passed, 0 tests failed out of 4
 
-This checkpoint took me about [n] hours to do. I [did/did not] attend the lab session.
-
-Program Structure and Design of the Router [Describe data
-structures and approach taken. Describe alternative designs considered
-or tested.  Describe benefits and weaknesses of your design compared
-with alternatives -- perhaps in terms of simplicity/complexity, risk
-of bugs, asymptotic performance, empirical performance, required
-implementation time and difficulty, and other factors. Include any
-measurements if applicable.]: []
-
-Implementation Challenges:
-[]
-
-Remaining Bugs:
-[]
-
-- If applicable: I received help from a former student in this class,
-  another expert, or a chatbot or other AI system (e.g. ChatGPT,
-  Gemini, Claude, etc.), with the following questions or prompts:
-  [please list questions/prompts]
-
-- Optional: I had unexpected difficulty with: [describe]
-
-- Optional: I think you could make this lab better by: [describe]
-
-- Optional: I was surprised by: [describe]
-
-- Optional: I'm not sure about: [describe]
+Total Test time (real) =   8.47 sec
+Built target check6
+```

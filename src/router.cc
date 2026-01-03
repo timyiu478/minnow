@@ -20,11 +20,51 @@ void Router::add_route( const uint32_t route_prefix,
        << static_cast<int>( prefix_length ) << " => " << ( next_hop.has_value() ? next_hop->ip() : "(direct)" )
        << " on interface " << interface_num << "\n";
 
-  debug( "unimplemented add_route() called" );
+  if ( next_hop.has_value() ) {
+    route_table_.push_back( { route_prefix, prefix_length, next_hop.value().ipv4_numeric(), interface_num, true} );
+  } else {
+    route_table_.push_back( { route_prefix, prefix_length, {}, interface_num, false} );
+  }
 }
 
 // Go through all the interfaces, and route every incoming datagram to its proper outgoing interface.
 void Router::route()
 {
-  debug( "unimplemented route() called" );
+  for ( auto iface : interfaces_ ) {
+    std::queue<InternetDatagram>& queue = iface->datagrams_received();
+    while ( !queue.empty() ) {
+      InternetDatagram dgram = queue.front();
+      queue.pop();
+
+      int longest_prefix_length = -1;
+      uint8_t select_idx;
+
+      for (  uint i = 0 ; i <  route_table_.size(); i++  ) {
+        Route r = route_table_[i];
+        if ( r.prefix_length > 0 && r.route_prefix >> ( 32 - r.prefix_length ) != dgram.header.dst >> ( 32 - r.prefix_length ) ) {
+          continue;
+        }
+        if ( r.prefix_length > longest_prefix_length ) {
+          longest_prefix_length = r.prefix_length;
+          select_idx = i;
+        }
+      }
+
+      debug("longest_prefix_length is {}, select_idx is {}", longest_prefix_length, select_idx);
+      
+      if ( longest_prefix_length > -1 && dgram.header.ttl > 1 ) {
+        dgram.header.ttl -= 1;
+        dgram.header.compute_checksum();
+
+        debug("dgram ttl is {}", dgram.header.ttl);
+
+        Address next_hop = Address::from_ipv4_numeric(dgram.header.dst);
+        if ( route_table_[select_idx].has_next_hop ) {
+          next_hop = Address::from_ipv4_numeric(route_table_[select_idx].next_hop);
+        }
+
+        interface(route_table_[select_idx].interface_num)->send_datagram(dgram, next_hop);
+      }
+    }
+  }
 }
